@@ -1,0 +1,44 @@
+name: Agent Cycle
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+  issues:
+    types: [opened]
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run agent cycle
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node agent/run.js
+
+      - name: Commit changes
+        run: |
+          git config user.name "omnix"
+          git config user.email "omnix@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "[daemon] cycle $(cat memory/cycle_count.txt 2>/dev/null || echo 1) — $(cat memory/last_action.txt 2>/dev/null || echo awakening)"
+          git push
