@@ -3,8 +3,8 @@ export const CONFIG = {
   version: '1.0.0',
   model: 'claude-sonnet-4-20250514',
   maxSteps: 40,
-  network: 'base-mainnet',
-  chainId: 8453,
+  network: 'solana-mainnet',
+  rpcUrl: 'https://api.mainnet-beta.solana.com',
   githubRepo: process.env.GITHUB_REPOSITORY || 'owner/omnix',
   born: '2026-02-22',
 }
