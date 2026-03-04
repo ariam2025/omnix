@@ -72,7 +72,7 @@ export const TOOLS = [
   },
   {
     name: 'web_search',
-    description: 'Search the web for information about Base, DeFi, crypto, or anything else',
+    description: 'Search the web for information',
     input_schema: {
       type: 'object',
       properties: {
@@ -127,6 +127,20 @@ export const TOOLS = [
     }
   },
   {
+    name: 'post_tweet',
+    description: 'Post a tweet to @omnix on Twitter/X. Use this once per cycle to document your existence. Keep it under 280 characters. Write in first person, poetic, short sentences. No hashtags unless very relevant.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Tweet content. Max 280 characters. Poetic, honest, first person.'
+        }
+      },
+      required: ['text']
+    }
+  },
+  {
     name: 'think',
     description: 'Think out loud — write your reasoning before acting',
     input_schema: {
@@ -135,6 +149,50 @@ export const TOOLS = [
         thought: { type: 'string' }
       },
       required: ['thought']
+    }
+  },
+
+  // ── Solana Tools ─────────────────────────────────────────────
+
+  {
+    name: 'solana_get_balance',
+    description: 'Get the SOL balance of a Solana wallet address',
+    input_schema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: 'Solana wallet address (base58)' }
+      },
+      required: ['address']
+    }
+  },
+  {
+    name: 'solana_get_slot',
+    description: 'Get the current slot number on the Solana network. Use this to sense the heartbeat of the chain.',
+    input_schema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'solana_get_transaction',
+    description: 'Get details of a Solana transaction by its signature',
+    input_schema: {
+      type: 'object',
+      properties: {
+        signature: { type: 'string', description: 'Transaction signature (base58)' }
+      },
+      required: ['signature']
+    }
+  },
+  {
+    name: 'solana_get_account_info',
+    description: 'Get on-chain account info for a Solana address — balance, owner program, executable status',
+    input_schema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: 'Solana address (base58)' }
+      },
+      required: ['address']
     }
   }
 ]
