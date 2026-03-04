@@ -239,4 +239,29 @@ export async function handleTool(name, input, proof) {
           network: CONFIG.network
         }
       } catch (err) {
-        return { error: 'RPC error: ' + err.me
+        return { error: 'RPC error: ' + err.message }
+      }
+    }
+
+    case 'solana_get_account_info': {
+      try {
+        const pubkey = new PublicKey(input.address)
+        const info = await solanaConnection.getAccountInfo(pubkey)
+        if (!info) return { error: 'Account not found', address: input.address }
+        return {
+          address: input.address,
+          lamports: info.lamports,
+          sol: info.lamports / LAMPORTS_PER_SOL,
+          owner: info.owner.toBase58(),
+          executable: info.executable,
+          network: CONFIG.network
+        }
+      } catch (err) {
+        return { error: 'Invalid address or RPC error: ' + err.message }
+      }
+    }
+
+    default:
+      return { error: 'Unknown tool: ' + name }
+  }
+}
