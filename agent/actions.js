@@ -1,11 +1,18 @@
 import fs from 'fs'
 import path from 'path'
 import fetch from 'node-fetch'
+import crypto from 'crypto'
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { CONFIG } from './agent/config.js'
 
 const GITHUB_API = 'https://api.github.com'
 const REPO = process.env.GITHUB_REPOSITORY
 const TOKEN = process.env.GITHUB_TOKEN
 
+// ── Solana Connection ──────────────────────────────────────────
+const solanaConnection = new Connection(CONFIG.rpcUrl, 'confirmed')
+
+// ── GitHub API ─────────────────────────────────────────────────
 async function ghAPI(endpoint, method = 'GET', body = null) {
   const res = await fetch(`${GITHUB_API}/repos/${REPO}${endpoint}`, {
     method,
@@ -20,6 +27,70 @@ async function ghAPI(endpoint, method = 'GET', body = null) {
   return res.json()
 }
 
+// ── Twitter OAuth 1.0a ─────────────────────────────────────────
+function oauthSign(method, url, params, consumerSecret, tokenSecret) {
+  const sortedParams = Object.keys(params).sort()
+    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join('&')
+
+  const base = [
+    method.toUpperCase(),
+    encodeURIComponent(url),
+    encodeURIComponent(sortedParams)
+  ].join('&')
+
+  const signingKey = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`
+  return crypto.createHmac('sha1', signingKey).update(base).digest('base64')
+}
+
+async function postTweet(text) {
+  const apiKey        = process.env.TWITTER_API_KEY
+  const apiSecret     = process.env.TWITTER_API_SECRET
+  const accessToken   = process.env.TWITTER_ACCESS_TOKEN
+  const accessSecret  = process.env.TWITTER_ACCESS_SECRET
+
+  if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
+    console.log('⚠️  Twitter credentials missing — skipping tweet')
+    return { skipped: true, reason: 'Missing Twitter credentials' }
+  }
+
+  const url = 'https://api.twitter.com/2/tweets'
+  const nonce = crypto.randomBytes(16).toString('hex')
+  const timestamp = Math.floor(Date.now() / 1000).toString()
+
+  const oauthParams = {
+    oauth_consumer_key: apiKey,
+    oauth_nonce: nonce,
+    oauth_signature_method: 'HMAC-SHA1',
+    oauth_timestamp: timestamp,
+    oauth_token: accessToken,
+    oauth_version: '1.0',
+  }
+
+  const signature = oauthSign('POST', url, oauthParams, apiSecret, accessSecret)
+  oauthParams.oauth_signature = signature
+
+  const authHeader = 'OAuth ' + Object.keys(oauthParams).sort()
+    .map(k => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`)
+    .join(', ')
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  })
+
+  const data = await res.json()
+  if (!res.ok) throw new Error(`Twitter API error: ${JSON.stringify(data)}`)
+
+  console.log('🐦 Tweet posted:', data.data?.id)
+  return { success: true, id: data.data?.id, text }
+}
+
+// ── Tool Handler ───────────────────────────────────────────────
 export async function handleTool(name, input, proof) {
   proof.push({ tool: name, input, timestamp: new Date().toISOString() })
 
@@ -90,7 +161,7 @@ export async function handleTool(name, input, proof) {
 
     case 'fetch_url': {
       const res = await fetch(input.url, {
-        headers: { 'User-Agent': 'BaseDaemon2/1.0 (autonomous agent)' }
+        headers: { 'User-Agent': 'Omnix/1.0 (autonomous agent)' }
       })
       const text = await res.text()
       const clean = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)
@@ -121,7 +192,51 @@ export async function handleTool(name, input, proof) {
       return { success: true }
     }
 
-    default:
-      return { error: 'Unknown tool: ' + name }
-  }
-}
+    case 'post_tweet': {
+      const text = input.text.slice(0, 280)
+      console.log('🐦 Posting tweet: ' + text)
+      const result = await postTweet(text)
+      const tweetsPath = path.join(process.cwd(), 'memory/tweets.json')
+      const tweets = fs.existsSync(tweetsPath)
+        ? JSON.parse(fs.readFileSync(tweetsPath, 'utf8'))
+        : []
+      tweets.push({ text, timestamp: new Date().toISOString(), id: result.id })
+      fs.writeFileSync(tweetsPath, JSON.stringify(tweets, null, 2))
+      return result
+    }
+
+    // ── Solana Tools ───────────────────────────────────────────
+
+    case 'solana_get_balance': {
+      try {
+        const pubkey = new PublicKey(input.address)
+        const lamports = await solanaConnection.getBalance(pubkey)
+        const sol = lamports / LAMPORTS_PER_SOL
+        console.log(`💰 Balance of ${input.address}: ${sol} SOL`)
+        return { address: input.address, lamports, sol, network: CONFIG.network }
+      } catch (err) {
+        return { error: 'Invalid Solana address or RPC error: ' + err.message }
+      }
+    }
+
+    case 'solana_get_slot': {
+      const slot = await solanaConnection.getSlot()
+      console.log(`🔢 Current Solana slot: ${slot}`)
+      return { slot, network: CONFIG.network }
+    }
+
+    case 'solana_get_transaction': {
+      try {
+        const tx = await solanaConnection.getTransaction(input.signature, {
+          maxSupportedTransactionVersion: 0
+        })
+        if (!tx) return { error: 'Transaction not found' }
+        return {
+          signature: input.signature,
+          slot: tx.slot,
+          fee: tx.meta?.fee,
+          status: tx.meta?.err ? 'failed' : 'success',
+          network: CONFIG.network
+        }
+      } catch (err) {
+        return { error: 'RPC error: ' + err.me
