@@ -22,7 +22,7 @@ async function ghAPI(endpoint, method = 'GET', body = null) {
   return res.json()
 }
 
-// ── Twiter OAuth 1.0a ─────────────────────────────────────────
+// ── Twitter OAuth 1.0a ─────────────────────────────────────────
 function oauthSign(method, url, params, consumerSecret, tokenSecret) {
   const sortedParams = Object.keys(params).sort()
     .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
